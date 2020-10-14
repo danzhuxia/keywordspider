@@ -3,42 +3,57 @@ package spider
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 )
 
 //Resp 响应
 type Resp struct {
-	status string
-	result *Result
-	msg    string
+	Status string   `json:"status", omitempty`
+	Result []*Result `json:"result", omitempty`
+	Msg    string   `json:"msg", omitempty`
 }
 
 //GetResult 爬取结果控制器
 func GetResult(w http.ResponseWriter, r *http.Request) {
-	var resp = &Resp{}
 	proxy := r.URL.Query().Get("proxy")
-	ProxyAddr := fmt.Sprintf("http://%s", proxy)
 	word := r.URL.Query().Get("word")
-	if word == "" {
-		resp.status = "400"
-		resp.msg = "Missing KeyWord! Please Check Your URL!"
-		bytes, err := json.Marshal(resp)
-		if err != nil {
-			fmt.Println("序列化失败", err)
-			return
+
+	if word != "" && proxy != "" {
+		ProxyAddr := fmt.Sprintf("http://%s", proxy)
+		//www.baidu.com/s?ie=UTF-8&word=
+		addr := fmt.Sprintf("http://www.baidu.com/s?ie=UTF-8&word=%s", word)
+		//fmt.Println(ProxyAddr, addr)
+		results := Spider(addr, ProxyAddr)
+		fmt.Println(results)
+		resp := &Resp{
+			Status: "403",
+			Result: []*Result{},
+			Msg:    "代理出错，获取数据失败!",
 		}
-		w.Write(bytes)
+		for _, res := range results {
+			if res.Title == "" || res.URL == "" || res.Desc == "" {
+				resp.Status = "401"
+				//resp.Result = []*Result{}
+				resp.Msg = "没有取得数据"
+				json.NewEncoder(w).Encode(resp)
+			}else {
+				resp.Status = "200"
+				resp.Msg = "OK!"
+				resp.Result = results
+			}
+			//json.NewEncoder(w).Encode(resp)
+		}
+		json.NewEncoder(w).Encode(resp)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		var resp = &Resp{
+			Status: "400",
+			Result: []*Result{},
+			Msg:    "Please Check Your URL!",
+		}
+		bytes, _ := json.Marshal(resp)
+		io.WriteString(w, string(bytes))
 	}
-	addr := fmt.Sprintf("http://www.baidu.com/s?word=%s", word)
-	var result = &Result{}
-	result = Spider(addr, ProxyAddr)
-	resp.status = "200"
-	resp.result = result
-	resp.msg = "OK!"
-	bytes, err := json.Marshal(resp)
-	if err != nil {
-		fmt.Println("序列化Json失败!", err)
-		return
-	}
-	w.Write(bytes)
+
 }
